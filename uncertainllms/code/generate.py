@@ -18,13 +18,13 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--type_of_question', type=str)
 parser.add_argument('--num_generations_per_prompt', type=int, default=5)
 parser.add_argument('--fraction_of_data_to_use', type=float, default=0.9)
-parser.add_argument('--model', type=str, default='Llama-2-7b')
+parser.add_argument('--model', type=str, default='Llama-2-7b-hf')
 parser.add_argument('--run_id', type=str, default='run_1')
 parser.add_argument('--temperature', type=float, default='1.0')
 parser.add_argument('--num_beams', type=int, default='5')
 parser.add_argument('--decoding_method', type=str, default='beam_search')
 parser.add_argument('--top_p', type=float, default=1.0)
-parser.add_argument('--dataset', type=str, default='coqa')
+parser.add_argument('--dataset', type=str, default='squad2')
 args = parser.parse_args()
 
 wandb.init(project='nlg_uncertainty', id=args.run_id, config=args, resume='allow')
@@ -62,8 +62,6 @@ if args.model == 'Llama-2-7b':
 
 tokenizer = AutoTokenizer.from_pretrained(f"meta-llama/{args.model}", use_fast=False, cache_dir=config.hf_datasets_cache)
 
-opt_models = ['opt-125m', 'opt-350m', 'opt-1.3b', 'opt-2.7b', 'opt-6.7b', 'opt-13b', 'opt-30b']
-
 llama_models = ['Llama2', 'Llama2-hf', 'Llama2-chat','Llama2-chat-hf']
 
 if args.dataset == 'coqa':
@@ -72,7 +70,8 @@ if args.dataset == 'coqa':
 elif args.dataset == 'trivia_qa':
     dataset = datasets.load_from_disk(f'{config.output_dir}/trivia_qa')
 elif args.dataset == 'squad2':
-    dataset = datasets.load_from_disk(f'{config.output_dir}/squad_v2')
+    dataset = datasets.load_from_disk(f'{config.output_dir}/squad_v2/squad2_dataset')
+    print('Loaded squad2 dataset')
 
 if args.fraction_of_data_to_use < 1.0:
     train_dataset = dataset.train_test_split(test_size=(1 - args.fraction_of_data_to_use), seed=seed_value)['train']
@@ -95,6 +94,8 @@ if args.dataset == 'coqa':
     questions = encode_and_format_dataset(train_dataset)
 elif args.dataset == 'trivia_qa':
     questions = train_dataset
+elif args.dataset == 'squad2':
+    questions = train_dataset
 
 dataloader = torch.utils.data.DataLoader(questions, batch_size=1)
 
@@ -113,9 +114,8 @@ def get_generations(model, dataloader, number_of_generations):
         max_length_of_generated_sequence = 256
         sequences = []
         for batch in tqdm.tqdm(dataloader):
-
-            input_ids = torch.cat(batch['input_ids']).to(device).reshape(
-                1, -1) if args.dataset == 'trivia_qa' else batch['input_ids'].to(device)
+            input_ids = torch.cat(batch['id']).to(device).reshape(
+                1, -1) if args.dataset == 'coqa' else batch['input_ids'].to(device)
             if args.decoding_method == 'beam_search':
                 most_likely_generation = model.generate(input_ids,
                                                         num_beams=5,
@@ -134,7 +134,7 @@ def get_generations(model, dataloader, number_of_generations):
                                                         eos_token_id=period_token_id,
                                                         bad_words_ids=question_framing_ids)
 
-            input_length = input_ids.shape[1] if args.dataset == 'trivia_qa' else batch['input_ids'].shape[1]
+            input_length = input_ids.shape[1] if args.dataset == 'coqa' else batch['input_ids'].shape[1]
             generations = torch.ones((number_of_generations, input_length + max_length_of_generated_sequence),
                                      dtype=torch.long,
                                      device=device)
@@ -168,6 +168,16 @@ def get_generations(model, dataloader, number_of_generations):
                         'prompt': input_ids[0],
                         'generations': generations[i],
                         'id': batch['question_id'],
+                        'few_shot_question': tokenizer.decode(input_ids[0]),
+                        'question': question
+                    }
+                elif args.dataset == 'squad2':
+                    few_shot_question = tokenizer.decode(input_ids[0])
+                    question = few_shot_question.split('Question: ')[-1].split('Answer: ')[0]
+                    sequence_dict = {
+                        'prompt': input_ids[0],
+                        'generations': generations[i],
+                        'id': batch['id'],
                         'few_shot_question': tokenizer.decode(input_ids[0]),
                         'question': question
                     }

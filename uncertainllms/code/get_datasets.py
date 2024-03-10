@@ -7,4 +7,4 @@ import datasets
 if __name__ == '__main__':
     # get datasets
     squad2 = datasets.load_dataset("squad_v2")
-    squad2.save_to_disk("../UncertainLLMs/data/squad_v2")
+    squad2.save_to_disk("../../data/squad_v2")
