@@ -21,7 +21,7 @@ parser.add_argument('--decoding_method', type=str, default='beam_search')
 parser.add_argument('--top_p', type=float, default=1.0)
 args = parser.parse_args()
 
-access_token = "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"
+access_token = ""
 
 model = AutoModelForCausalLM.from_pretrained(f"meta-llama/{args.model}",token=access_token,
                                              torch_dtype=torch.float16,
